@@ -1,17 +1,30 @@
 // ============================================================
-// SCRUMFLOW PRO · FULLY FUNCTIONAL APPLICATION
-// No external dependencies - complete self-contained system
+// SCRUMFLOW PRO · DASHBOARD MODULE
 // ============================================================
 
 (function() {
   'use strict';
 
-  // ---------- STATE ----------
+  // API Base URL
+  const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:5000/api'
+    : 'https://your-backend-url.vercel.app/api';
+
+  // ===== CHECK AUTH =====
+  const token = localStorage.getItem('scrumflow_token');
+  const userData = JSON.parse(localStorage.getItem('scrumflow_user') || '{}');
+
+  if (!token) {
+    window.location.href = 'index.html';
+    return;
+  }
+
+  // ===== STATE =====
   let stories = [];
   let nextId = 1;
   let historyEvents = [];
 
-  // ---------- DOM REFS ----------
+  // ===== DOM REFS =====
   const storyListEl = document.getElementById('storyListContainer');
   const todoListEl = document.getElementById('todoList');
   const inprogressListEl = document.getElementById('inprogressList');
@@ -24,6 +37,8 @@
   const historyListEl = document.getElementById('historyList');
   const storyCountEl = document.getElementById('storyCount');
   const totalTasksEl = document.getElementById('totalTasksCount');
+  const userNameEl = document.getElementById('userName');
+  const logoutBtn = document.getElementById('logoutBtn');
 
   const addBtn = document.getElementById('addStoryBtn');
   const titleInput = document.getElementById('storyTitleInput');
@@ -33,7 +48,19 @@
   const importBtn = document.getElementById('importJsonBtn');
   const fileInput = document.getElementById('fileInput');
 
-  // ---------- HELPERS ----------
+  // ===== SET USER NAME =====
+  if (userNameEl && userData.name) {
+    userNameEl.textContent = userData.name;
+  }
+
+  // ===== LOGOUT =====
+  logoutBtn.addEventListener('click', function() {
+    localStorage.removeItem('scrumflow_token');
+    localStorage.removeItem('scrumflow_user');
+    window.location.href = 'index.html';
+  });
+
+  // ===== HELPERS =====
   function getStatusCounts() {
     const todo = stories.filter(s => s.status === 'todo').length;
     const inprogress = stories.filter(s => s.status === 'inprogress').length;
@@ -54,7 +81,7 @@
     });
     if (historyEvents.length > 50) historyEvents.pop();
     renderHistory();
-    saveToLocalStorage();
+    saveToBackend();
   }
 
   function renderHistory() {
@@ -75,37 +102,51 @@
     return div.innerHTML;
   }
 
-  // ---------- LOCAL STORAGE ----------
-  function saveToLocalStorage() {
+  // ===== BACKEND API CALLS =====
+  async function loadFromBackend() {
     try {
-      const data = {
-        stories: stories,
-        nextId: nextId,
-        historyEvents: historyEvents
-      };
-      localStorage.setItem('scrumflow_data', JSON.stringify(data));
-    } catch (e) {
-      console.warn('Could not save to localStorage:', e);
-    }
-  }
-
-  function loadFromLocalStorage() {
-    try {
-      const stored = localStorage.getItem('scrumflow_data');
-      if (stored) {
-        const data = JSON.parse(stored);
+      const response = await fetch(`${API_URL}/stories`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
         stories = data.stories || [];
+        historyEvents = data.history || [];
         nextId = data.nextId || 1;
-        historyEvents = data.historyEvents || [];
+        renderAll();
         return true;
       }
-    } catch (e) {
-      console.warn('Could not load from localStorage:', e);
+    } catch (error) {
+      console.error('Error loading from backend:', error);
     }
     return false;
   }
 
-  // ---------- RENDER FUNCTIONS ----------
+  async function saveToBackend() {
+    try {
+      const data = {
+        stories: stories,
+        history: historyEvents,
+        nextId: nextId
+      };
+      
+      await fetch(`${API_URL}/stories`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(data)
+      });
+    } catch (error) {
+      console.error('Error saving to backend:', error);
+    }
+  }
+
+  // ===== RENDER FUNCTIONS =====
   function renderAll() {
     renderStoryList();
     renderTaskBoard();
@@ -177,7 +218,6 @@
     inprogressCountEl.textContent = counts.inprogress;
     doneCountEl.textContent = counts.done;
 
-    // Move event listeners
     document.querySelectorAll('.move-right').forEach(btn => {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -209,7 +249,7 @@
     totalTasksEl.textContent = stories.length;
   }
 
-  // ---------- CRUD OPERATIONS ----------
+  // ===== CRUD OPERATIONS =====
   function moveStory(id, delta) {
     const story = stories.find(s => s.id === id);
     if (!story) return;
@@ -257,11 +297,10 @@
       stories = [];
       nextId = 1;
       renderAll();
-      saveToLocalStorage();
     }
   }
 
-  // ---------- EXPORT / IMPORT ----------
+  // ===== EXPORT / IMPORT =====
   function exportJson() {
     if (stories.length === 0) {
       alert('No stories to export.');
@@ -302,7 +341,6 @@
         }
         
         stories = data.stories;
-        // Find the max ID to continue from there
         let maxId = 0;
         stories.forEach(s => { if (s.id > maxId) maxId = s.id; });
         nextId = maxId + 1;
@@ -312,7 +350,7 @@
         }
         
         renderAll();
-        saveToLocalStorage();
+        saveToBackend();
         addHistoryEvent('Import', `Imported ${stories.length} stories from file`);
         alert(`✅ Successfully imported ${stories.length} stories!`);
       } catch (err) {
@@ -322,38 +360,7 @@
     reader.readAsText(file);
   }
 
-  // ---------- SEED DEMO DATA ----------
-  // function seedDemo() {
-  //   // Check if we have saved data
-  //   if (loadFromLocalStorage()) {
-  //     renderAll();
-  //     return;
-  //   }
-    
-  //   // Otherwise seed with demo data
-  //   const demo = [
-  //     { title: 'User login with OAuth', points: 5 },
-  //     { title: 'Dashboard analytics', points: 8 },
-  //     { title: 'Profile picture upload', points: 3 },
-  //     { title: 'Password reset flow', points: 2 },
-  //     { title: 'Email notification system', points: 5 },
-  //   ];
-  //   demo.forEach((d, index) => {
-  //     const statuses = ['todo', 'inprogress', 'done'];
-  //     const status = statuses[index % statuses.length];
-  //     stories.push({
-  //       id: nextId++,
-  //       title: d.title,
-  //       points: d.points,
-  //       status: status
-  //     });
-  //   });
-  //   renderAll();
-  //   addHistoryEvent('Seed', 'Loaded demo stories');
-  //   saveToLocalStorage();
-  // }
-
-  // ---------- EVENT LISTENERS ----------
+  // ===== EVENT LISTENERS =====
   addBtn.addEventListener('click', () => addStory(titleInput.value, pointsSelect.value));
 
   titleInput.addEventListener('keypress', (e) => {
@@ -373,29 +380,53 @@
   fileInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
       importJson(e.target.files[0]);
-      e.target.value = ''; // Reset file input
+      e.target.value = '';
     }
   });
 
-  // ---------- KEYBOARD SHORTCUTS ----------
+  // ===== KEYBOARD SHORTCUTS =====
   document.addEventListener('keydown', (e) => {
-    // Ctrl+Shift+R to reset
     if (e.ctrlKey && e.shiftKey && e.key === 'R') {
       e.preventDefault();
       resetAll();
     }
-    // Ctrl+Shift+E to export
     if (e.ctrlKey && e.shiftKey && e.key === 'E') {
       e.preventDefault();
       exportJson();
     }
   });
 
-  // ---------- INITIALIZE ----------
-  seedDemo();
+  // ===== INITIALIZE =====
+  async function init() {
+    const loaded = await loadFromBackend();
+    if (!loaded) {
+      // Seed demo data if no backend data
+      const demo = [
+        { title: 'User login with OAuth', points: 5 },
+        { title: 'Dashboard analytics', points: 8 },
+        { title: 'Profile picture upload', points: 3 },
+        { title: 'Password reset flow', points: 2 },
+        { title: 'Email notification system', points: 5 },
+      ];
+      demo.forEach((d, index) => {
+        const statuses = ['todo', 'inprogress', 'done'];
+        const status = statuses[index % statuses.length];
+        stories.push({
+          id: nextId++,
+          title: d.title,
+          points: d.points,
+          status: status
+        });
+      });
+      renderAll();
+      addHistoryEvent('Seed', 'Loaded demo stories');
+      saveToBackend();
+    }
+    console.log('🚀 ScrumFlow Pro initialized successfully!');
+    console.log(`📊 ${stories.length} stories loaded`);
+    console.log(`👤 Logged in as: ${userData.name}`);
+  }
 
-  console.log('🚀 ScrumFlow Pro initialized successfully!');
-  console.log(`📊 ${stories.length} stories loaded`);
-  console.log('💡 Shortcuts: Ctrl+Shift+R = Reset, Ctrl+Shift+E = Export');
+  init();
 
 })();
