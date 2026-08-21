@@ -5,17 +5,26 @@
 (function() {
   'use strict';
 
-  // API Base URL
-  const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:5000/api'
-    : 'https://your-backend-url.vercel.app/api';
+  // Dynamic API Base URL resolution
+  function getApiUrl() {
+    const custom = localStorage.getItem('scrumflow_custom_api_url');
+    if (custom) return custom.replace(/\/+$/, '');
+
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return window.location.port === '5000' ? '/api' : 'http://localhost:5000/api';
+    }
+    return window.SCRUMFLOW_API_URL || 'https://scrumflow-backend.vercel.app/api';
+  }
+
+  let API_URL = getApiUrl();
+  let isApiConnected = false;
 
   // ===== CHECK AUTH =====
   const token = localStorage.getItem('scrumflow_token');
   const userData = JSON.parse(localStorage.getItem('scrumflow_user') || '{}');
 
   if (!token) {
-    window.location.href = 'index.html';
+    window.location.href = '../index.html';
     return;
   }
 
@@ -23,6 +32,9 @@
   let stories = [];
   let nextId = 1;
   let historyEvents = [];
+
+  // Storage key per user
+  const STORAGE_KEY = 'scrumflow_data_' + (userData.id || 'default');
 
   // ===== DOM REFS =====
   const storyListEl = document.getElementById('storyListContainer');
@@ -39,6 +51,9 @@
   const totalTasksEl = document.getElementById('totalTasksCount');
   const userNameEl = document.getElementById('userName');
   const logoutBtn = document.getElementById('logoutBtn');
+  const syncStatusPill = document.getElementById('syncStatusPill');
+  const dashStatusDot = document.getElementById('dashStatusDot');
+  const dashStatusText = document.getElementById('dashStatusText');
 
   const addBtn = document.getElementById('addStoryBtn');
   const titleInput = document.getElementById('storyTitleInput');
@@ -49,15 +64,37 @@
   const fileInput = document.getElementById('fileInput');
 
   // ===== SET USER NAME =====
-  if (userNameEl && userData.name) {
-    userNameEl.textContent = userData.name;
+  if (userNameEl) {
+    userNameEl.textContent = userData.name || 'Agile Master';
+  }
+
+  // ===== SYNC / STATUS PILL CLICK =====
+  if (syncStatusPill) {
+    syncStatusPill.addEventListener('click', () => {
+      const current = localStorage.getItem('scrumflow_custom_api_url') || API_URL;
+      const mode = isApiConnected ? 'Connected to PostgreSQL Backend' : 'Running in Offline / LocalStorage Mode';
+      const promptVal = prompt(
+        `Current Status: ${mode}\nAPI Base URL: ${API_URL}\n\nTo connect to a custom backend, enter the URL below (or leave blank to reset):`,
+        current
+      );
+      if (promptVal !== null) {
+        const trimmed = promptVal.trim();
+        if (trimmed) {
+          localStorage.setItem('scrumflow_custom_api_url', trimmed);
+        } else {
+          localStorage.removeItem('scrumflow_custom_api_url');
+        }
+        API_URL = getApiUrl();
+        init();
+      }
+    });
   }
 
   // ===== LOGOUT =====
   logoutBtn.addEventListener('click', function() {
     localStorage.removeItem('scrumflow_token');
     localStorage.removeItem('scrumflow_user');
-    window.location.href = 'index.html';
+    window.location.href = '../index.html';
   });
 
   // ===== HELPERS =====
@@ -69,7 +106,7 @@
   }
 
   function calculateVelocity() {
-    return stories.filter(s => s.status === 'done').reduce((sum, s) => sum + s.points, 0);
+    return stories.filter(s => s.status === 'done').reduce((sum, s) => sum + (Number(s.points) || 0), 0);
   }
 
   function addHistoryEvent(action, details) {
@@ -81,7 +118,7 @@
     });
     if (historyEvents.length > 50) historyEvents.pop();
     renderHistory();
-    saveToBackend();
+    saveData();
   }
 
   function renderHistory() {
@@ -102,30 +139,79 @@
     return div.innerHTML;
   }
 
+  // ===== LOCAL STORAGE DATA PERSISTENCE =====
+  function saveToLocal() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        stories,
+        history: historyEvents,
+        nextId
+      }));
+    } catch (e) {
+      console.warn('Local storage save error:', e);
+    }
+  }
+
+  function loadFromLocal() {
+    try {
+      const dataStr = localStorage.getItem(STORAGE_KEY);
+      if (dataStr) {
+        const parsed = JSON.parse(dataStr);
+        stories = parsed.stories || [];
+        historyEvents = parsed.history || [];
+        nextId = parsed.nextId || (stories.length > 0 ? Math.max(...stories.map(s => s.id)) + 1 : 1);
+        return true;
+      }
+    } catch (e) {
+      console.warn('Local storage load error:', e);
+    }
+    return false;
+  }
+
   // ===== BACKEND API CALLS =====
   async function loadFromBackend() {
+    // If token is local demo token, skip remote API load
+    if (token.startsWith('demo-local-') || token.startsWith('local-token-')) {
+      updateSyncStatus(false, 'Local Storage');
+      return false;
+    }
+
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
       const response = await fetch(`${API_URL}/stories`, {
         headers: {
           'Authorization': `Bearer ${token}`
-        }
+        },
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       
       if (response.ok) {
         const data = await response.json();
         stories = data.stories || [];
         historyEvents = data.history || [];
-        nextId = data.nextId || 1;
+        nextId = data.nextId || (stories.length > 0 ? Math.max(...stories.map(s => s.id)) + 1 : 1);
+        isApiConnected = true;
+        updateSyncStatus(true, 'Live Database');
+        saveToLocal();
         renderAll();
         return true;
       }
     } catch (error) {
-      console.error('Error loading from backend:', error);
+      console.warn('Backend load failed, falling back to local:', error.message);
     }
+    updateSyncStatus(false, 'Local Storage');
     return false;
   }
 
-  async function saveToBackend() {
+  async function saveData() {
+    saveToLocal();
+
+    if (token.startsWith('demo-local-') || token.startsWith('local-token-')) {
+      return;
+    }
+
     try {
       const data = {
         stories: stories,
@@ -133,16 +219,33 @@
         nextId: nextId
       };
       
-      await fetch(`${API_URL}/stories`, {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const response = await fetch(`${API_URL}/stories`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
+      if (response.ok) {
+        isApiConnected = true;
+        updateSyncStatus(true, 'Live Database');
+      }
     } catch (error) {
-      console.error('Error saving to backend:', error);
+      console.warn('Backend save unavailable, saved locally:', error.message);
+      updateSyncStatus(false, 'Local Storage');
+    }
+  }
+
+  function updateSyncStatus(connected, label) {
+    isApiConnected = connected;
+    if (dashStatusDot && dashStatusText) {
+      dashStatusDot.className = 'status-dot ' + (connected ? 'online' : 'offline');
+      dashStatusText.textContent = label;
     }
   }
 
@@ -152,6 +255,7 @@
     renderTaskBoard();
     updateVelocity();
     updateCounts();
+    renderHistory();
   }
 
   function renderStoryList() {
@@ -181,7 +285,7 @@
     document.querySelectorAll('.story-item .delete-btn').forEach(btn => {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
-        const id = parseInt(this.dataset.id);
+        const id = parseInt(this.dataset.id, 10);
         deleteStory(id);
       });
     });
@@ -221,14 +325,14 @@
     document.querySelectorAll('.move-right').forEach(btn => {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
-        const id = parseInt(this.dataset.id);
+        const id = parseInt(this.dataset.id, 10);
         moveStory(id, 1);
       });
     });
     document.querySelectorAll('.move-left').forEach(btn => {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
-        const id = parseInt(this.dataset.id);
+        const id = parseInt(this.dataset.id, 10);
         moveStory(id, -1);
       });
     });
@@ -269,6 +373,7 @@
     addHistoryEvent('Delete', `"${story.title}" (${story.points} pts)`);
     stories = stories.filter(s => s.id !== id);
     renderAll();
+    saveData();
   }
 
   function addStory(title, points) {
@@ -279,7 +384,7 @@
     const newStory = {
       id: nextId++,
       title: title.trim(),
-      points: parseInt(points, 10),
+      points: parseInt(points, 10) || 1,
       status: 'todo'
     };
     stories.push(newStory);
@@ -297,6 +402,7 @@
       stories = [];
       nextId = 1;
       renderAll();
+      saveData();
     }
   }
 
@@ -350,7 +456,7 @@
         }
         
         renderAll();
-        saveToBackend();
+        saveData();
         addHistoryEvent('Import', `Imported ${stories.length} stories from file`);
         alert(`✅ Successfully imported ${stories.length} stories!`);
       } catch (err) {
@@ -398,33 +504,34 @@
 
   // ===== INITIALIZE =====
   async function init() {
-    const loaded = await loadFromBackend();
-    if (!loaded) {
-      // Seed demo data if no backend data
-      const demo = [
-        { title: 'User login with OAuth', points: 5 },
-        { title: 'Dashboard analytics', points: 8 },
-        { title: 'Profile picture upload', points: 3 },
-        { title: 'Password reset flow', points: 2 },
-        { title: 'Email notification system', points: 5 },
-      ];
-      demo.forEach((d, index) => {
-        const statuses = ['todo', 'inprogress', 'done'];
-        const status = statuses[index % statuses.length];
-        stories.push({
-          id: nextId++,
+    const loadedFromApi = await loadFromBackend();
+    if (!loadedFromApi) {
+      const loadedFromLocal = loadFromLocal();
+      if (!loadedFromLocal || stories.length === 0) {
+        // Seed default stories for first-time / demo experience
+        const demo = [
+          { title: 'User authentication & JWT authorization', points: 5, status: 'done' },
+          { title: 'Interactive Agile Kanban task board', points: 8, status: 'inprogress' },
+          { title: 'Automatic sprint velocity calculation', points: 3, status: 'inprogress' },
+          { title: 'Activity log & real-time event audit', points: 2, status: 'todo' },
+          { title: 'Export / Import sprint data as JSON', points: 3, status: 'todo' },
+          { title: 'PostgreSQL database synchronization', points: 5, status: 'todo' }
+        ];
+        stories = demo.map((d, index) => ({
+          id: index + 1,
           title: d.title,
           points: d.points,
-          status: status
-        });
-      });
+          status: d.status
+        }));
+        nextId = stories.length + 1;
+        addHistoryEvent('Seed', 'Loaded initial sprint template stories');
+      }
       renderAll();
-      addHistoryEvent('Seed', 'Loaded demo stories');
-      saveToBackend();
+      saveData();
     }
     console.log('🚀 ScrumFlow Pro initialized successfully!');
     console.log(`📊 ${stories.length} stories loaded`);
-    console.log(`👤 Logged in as: ${userData.name}`);
+    console.log(`👤 User: ${userData.name}`);
   }
 
   init();

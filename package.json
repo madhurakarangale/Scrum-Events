@@ -1,0 +1,19 @@
+{
+  "name": "scrumflow-pro",
+  "version": "1.0.0",
+  "description": "ScrumFlow Pro - Enterprise Agile Project Management Tool",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "nodemon backend/server.js",
+    "install:backend": "cd backend && npm install",
+    "postinstall": "cd backend && npm install"
+  },
+  "keywords": [
+    "scrum",
+    "agile",
+    "project-management",
+    "kanban"
+  ],
+  "author": "Madhura Karangale",
+  "license": "MIT"
+}

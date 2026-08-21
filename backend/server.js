@@ -1,32 +1,50 @@
-// ============================================================
-// SCRUMFLOW PRO · BACKEND SERVER
-// ============================================================
-
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ===== MIDDLEWARE =====
+// Allow CORS for local development, GitHub Pages, Vercel, and cloud deployments
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:5500', 'https://your-frontend-url.vercel.app'],
+  origin: function(origin, callback) {
+    if (!origin) return callback(null, true);
+    // Allow any localhost / 127.0.0.1 port, GitHub pages, and Vercel domains
+    if (
+      /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+      origin.endsWith('.github.io') ||
+      origin.endsWith('.vercel.app') ||
+      origin.endsWith('.onrender.com')
+    ) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
   credentials: true
 }));
 app.use(express.json());
 
+// Serve static frontend files from docs directory
+app.use(express.static(path.join(__dirname, '../docs')));
+
 // ===== DATABASE CONNECTION =====
-const pool = new Pool({
+const isProduction = process.env.NODE_ENV === 'production';
+const poolConfig = {
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+};
+if (isProduction || (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('sslmode=require'))) {
+  poolConfig.ssl = { rejectUnauthorized: false };
+}
+const pool = new Pool(poolConfig);
 
 // ===== JWT SECRET =====
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
+const JWT_SECRET = process.env.JWT_SECRET || 'scrumflow-super-secret-jwt-key-2024';
 
 // ===== AUTH MIDDLEWARE =====
 function authenticateToken(req, res, next) {
@@ -60,7 +78,6 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // Validate input
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'All fields are required' });
     }
@@ -69,7 +86,6 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
-    // Check if user exists
     const userCheck = await pool.query(
       'SELECT * FROM users WHERE email = $1',
       [email]
@@ -79,10 +95,8 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
     const result = await pool.query(
       'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email',
       [name, email, hashedPassword]
@@ -90,7 +104,6 @@ app.post('/api/auth/register', async (req, res) => {
 
     const user = result.rows[0];
 
-    // Create default project for user
     await pool.query(
       'INSERT INTO projects (user_id, name, data) VALUES ($1, $2, $3)',
       [user.id, 'My First Project', JSON.stringify({ stories: [], history: [], nextId: 1 })]
@@ -115,7 +128,6 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
-    // Find user
     const result = await pool.query(
       'SELECT * FROM users WHERE email = $1',
       [email]
@@ -127,13 +139,11 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Check password
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Generate JWT
     const token = jwt.sign(
       { id: user.id, email: user.email, name: user.name },
       JWT_SECRET,
@@ -186,20 +196,17 @@ app.post('/api/stories', authenticateToken, async (req, res) => {
 
     const data = { stories, history, nextId };
 
-    // Check if project exists
     const checkResult = await pool.query(
       'SELECT id FROM projects WHERE user_id = $1',
       [userId]
     );
 
     if (checkResult.rows.length === 0) {
-      // Create new project
       await pool.query(
         'INSERT INTO projects (user_id, name, data) VALUES ($1, $2, $3)',
         [userId, 'My Project', data]
       );
     } else {
-      // Update existing project
       await pool.query(
         'UPDATE projects SET data = $1, updated_at = NOW() WHERE user_id = $2',
         [data, userId]
