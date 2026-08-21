@@ -140,6 +140,31 @@
     return div.innerHTML;
   }
 
+  // ===== SAMPLE DATA FILTER (Ensures zero mock data ever appears) =====
+  const SAMPLE_TITLES = new Set([
+    'user authentication & jwt authorization',
+    'interactive agile kanban task board',
+    'automatic sprint velocity calculation',
+    'activity log & real-time event audit',
+    'export / import sprint data as json',
+    'postgresql database synchronization'
+  ]);
+
+  function sanitizeUserData(rawStories, rawHistory) {
+    const cleanStories = (rawStories || []).filter(s => {
+      const titleLower = (s.title || '').toLowerCase().trim();
+      return !SAMPLE_TITLES.has(titleLower);
+    });
+
+    const cleanHistory = (rawHistory || []).filter(h => {
+      if (h.action === 'Seed') return false;
+      if (h.details && h.details.includes('Loaded initial sprint template')) return false;
+      return true;
+    });
+
+    return { stories: cleanStories, history: cleanHistory };
+  }
+
   // ===== LOCAL STORAGE DATA PERSISTENCE =====
   function saveToLocal() {
     try {
@@ -163,19 +188,12 @@
 
       if (dataStr) {
         const parsed = JSON.parse(dataStr);
-        let loadedStories = parsed.stories || [];
-        let loadedHistory = parsed.history || [];
+        const sanitized = sanitizeUserData(parsed.stories, parsed.history);
 
-        // Purge legacy hardcoded demo seed stories from older sessions if present
-        const hasLegacySeed = loadedHistory.some(h => h.action === 'Seed' || (h.details && h.details.includes('Loaded initial sprint template')));
-        if (hasLegacySeed && loadedStories.length === 6 && loadedStories[0].title === 'User authentication & JWT authorization') {
-          loadedStories = [];
-          loadedHistory = [];
-        }
-
-        stories = loadedStories;
-        historyEvents = loadedHistory;
+        stories = sanitized.stories;
+        historyEvents = sanitized.history;
         nextId = parsed.nextId || (stories.length > 0 ? Math.max(...stories.map(s => s.id)) + 1 : 1);
+        saveToLocal();
         return true;
       }
     } catch (e) {
@@ -205,8 +223,9 @@
       
       if (response.ok) {
         const data = await response.json();
-        stories = data.stories || [];
-        historyEvents = data.history || [];
+        const sanitized = sanitizeUserData(data.stories, data.history);
+        stories = sanitized.stories;
+        historyEvents = sanitized.history;
         nextId = data.nextId || (stories.length > 0 ? Math.max(...stories.map(s => s.id)) + 1 : 1);
         isApiConnected = true;
         updateSyncStatus(true, 'Live Database');
