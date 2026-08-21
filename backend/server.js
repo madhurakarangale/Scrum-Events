@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 5000;
 // ===== MIDDLEWARE =====
 // Allow CORS for local development, GitHub Pages, Vercel, and cloud deployments
 app.use(cors({
-  origin: function(origin, callback) {
+  origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     // Allow any localhost / 127.0.0.1 port, GitHub pages, and Vercel domains
     if (

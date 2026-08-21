@@ -2,7 +2,7 @@
 // SCRUMFLOW PRO · AUTHENTICATION MODULE
 // ============================================================
 
-(function() {
+(function () {
   'use strict';
 
   // Dynamic API Base URL resolution
@@ -48,7 +48,7 @@
     } catch {
       isApiOnline = false;
       authStatusDot.className = 'status-dot offline';
-      authStatusText.textContent = 'Demo / Local Storage Mode';
+      authStatusText.textContent = 'Local Storage Mode';
     }
   }
 
@@ -75,22 +75,22 @@
 
   // ===== TAB SWITCHING =====
   tabBtns.forEach(btn => {
-    btn.addEventListener('click', function() {
+    btn.addEventListener('click', function () {
       const tab = this.dataset.tab;
-      
+
       tabBtns.forEach(b => b.classList.remove('active'));
       this.classList.add('active');
-      
+
       document.querySelectorAll('.auth-form').forEach(form => {
         form.classList.remove('active');
       });
-      
+
       if (tab === 'login') {
         document.getElementById('loginForm').classList.add('active');
       } else {
         document.getElementById('registerForm').classList.add('active');
       }
-      
+
       if (loginMessage) loginMessage.style.display = 'none';
       if (registerMessage) registerMessage.style.display = 'none';
     });
@@ -107,11 +107,11 @@
       };
       localStorage.setItem('scrumflow_user', JSON.stringify(demoUser));
       localStorage.setItem('scrumflow_token', 'demo-local-token-' + Date.now());
-      
+
       loginMessage.textContent = '🚀 Launching Live Demo...';
       loginMessage.className = 'auth-message success';
       loginMessage.style.display = 'block';
-      
+
       setTimeout(() => {
         window.location.href = 'pages/dashboard.html';
       }, 500);
@@ -127,14 +127,14 @@
   }
 
   // ===== LOGIN =====
-  loginForm.addEventListener('submit', async function(e) {
+  loginForm.addEventListener('submit', async function (e) {
     e.preventDefault();
-    
+
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
-    
+
     loginMessage.style.display = 'none';
-    
+
     // Try Backend API First
     try {
       const controller = new AbortController();
@@ -148,17 +148,17 @@
         signal: controller.signal
       });
       clearTimeout(timeoutId);
-      
+
       const data = await response.json();
-      
+
       if (response.ok) {
         localStorage.setItem('scrumflow_user', JSON.stringify(data.user));
         localStorage.setItem('scrumflow_token', data.token);
-        
+
         loginMessage.textContent = '✅ Login successful! Redirecting...';
         loginMessage.className = 'auth-message success';
         loginMessage.style.display = 'block';
-        
+
         setTimeout(() => {
           window.location.href = 'pages/dashboard.html';
         }, 800);
@@ -185,11 +185,11 @@
           email: foundUser.email
         }));
         localStorage.setItem('scrumflow_token', 'local-token-' + foundUser.id);
-        
+
         loginMessage.textContent = '✅ Login successful (Offline Mode)! Redirecting...';
         loginMessage.className = 'auth-message success';
         loginMessage.style.display = 'block';
-        
+
         setTimeout(() => {
           window.location.href = 'pages/dashboard.html';
         }, 800);
@@ -211,34 +211,34 @@
     };
     localStorage.setItem('scrumflow_user', JSON.stringify(guestUser));
     localStorage.setItem('scrumflow_token', 'local-token-' + guestUser.id);
-    
+
     loginMessage.textContent = '⚡ Logged in with Local Workspace. Redirecting...';
     loginMessage.className = 'auth-message success';
     loginMessage.style.display = 'block';
-    
+
     setTimeout(() => {
       window.location.href = 'pages/dashboard.html';
     }, 800);
   });
 
   // ===== REGISTER =====
-  registerForm.addEventListener('submit', async function(e) {
+  registerForm.addEventListener('submit', async function (e) {
     e.preventDefault();
-    
+
     const name = document.getElementById('registerName').value.trim();
     const email = document.getElementById('registerEmail').value.trim();
     const password = document.getElementById('registerPassword').value;
     const confirmPassword = document.getElementById('registerConfirmPassword').value;
-    
+
     registerMessage.style.display = 'none';
-    
+
     if (password !== confirmPassword) {
       registerMessage.textContent = '❌ Passwords do not match.';
       registerMessage.className = 'auth-message error';
       registerMessage.style.display = 'block';
       return;
     }
-    
+
     // Try Backend API First
     try {
       const controller = new AbortController();
@@ -252,14 +252,14 @@
         signal: controller.signal
       });
       clearTimeout(timeoutId);
-      
+
       const data = await response.json();
-      
+
       if (response.ok) {
         registerMessage.textContent = '✅ Registration successful! Please login.';
         registerMessage.className = 'auth-message success';
         registerMessage.style.display = 'block';
-        
+
         setTimeout(() => {
           document.querySelector('[data-tab="login"]').click();
           document.getElementById('loginEmail').value = email;
@@ -296,7 +296,7 @@
     registerMessage.textContent = '✅ Registered locally! Please login.';
     registerMessage.className = 'auth-message success';
     registerMessage.style.display = 'block';
-    
+
     setTimeout(() => {
       document.querySelector('[data-tab="login"]').click();
       document.getElementById('loginEmail').value = email;

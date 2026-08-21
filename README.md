@@ -12,7 +12,7 @@ Enterprise-grade Agile Project Management & Scrum Task Board Tool.
 
 ## ✨ Features
 
-- 🔐 **Authentication**: JWT authentication with instant local demo mode and fallback offline storage.
+- 🔐 **Authentication**: JWT authentication with fallback offline storage.
 - 📝 **Story Management**: Create, view, estimate story points (Fibonacci sequence: 1, 2, 3, 5, 8, 13).
 - 📊 **Agile Task Board**: Move stories seamlessly between *To Do* ➔ *In Progress* ➔ *Done*.
 - ⚡ **Automated Velocity**: Real-time sprint velocity calculation based on completed story points.
