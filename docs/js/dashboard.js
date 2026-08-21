@@ -33,8 +33,9 @@
   let nextId = 1;
   let historyEvents = [];
 
-  // Storage key per user
-  const STORAGE_KEY = 'scrumflow_data_' + (userData.id || 'default');
+  // User specific storage key
+  const userIdentifier = (userData.email || userData.id || 'default').toString().toLowerCase().trim().replace(/[^a-z0-9_]/g, '_');
+  const STORAGE_KEY = 'scrumflow_user_data_' + userIdentifier;
 
   // ===== DOM REFS =====
   const storyListEl = document.getElementById('storyListContainer');
@@ -154,11 +155,26 @@
 
   function loadFromLocal() {
     try {
-      const dataStr = localStorage.getItem(STORAGE_KEY);
+      // Try user specific key first, fallback to legacy key if needed
+      let dataStr = localStorage.getItem(STORAGE_KEY);
+      if (!dataStr && userData.id) {
+        dataStr = localStorage.getItem('scrumflow_data_' + userData.id);
+      }
+
       if (dataStr) {
         const parsed = JSON.parse(dataStr);
-        stories = parsed.stories || [];
-        historyEvents = parsed.history || [];
+        let loadedStories = parsed.stories || [];
+        let loadedHistory = parsed.history || [];
+
+        // Purge legacy hardcoded demo seed stories from older sessions if present
+        const hasLegacySeed = loadedHistory.some(h => h.action === 'Seed' || (h.details && h.details.includes('Loaded initial sprint template')));
+        if (hasLegacySeed && loadedStories.length === 6 && loadedStories[0].title === 'User authentication & JWT authorization') {
+          loadedStories = [];
+          loadedHistory = [];
+        }
+
+        stories = loadedStories;
+        historyEvents = loadedHistory;
         nextId = parsed.nextId || (stories.length > 0 ? Math.max(...stories.map(s => s.id)) + 1 : 1);
         return true;
       }
