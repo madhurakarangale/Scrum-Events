@@ -506,30 +506,11 @@
   async function init() {
     const loadedFromApi = await loadFromBackend();
     if (!loadedFromApi) {
-      const loadedFromLocal = loadFromLocal();
-      if (!loadedFromLocal || stories.length === 0) {
-        // Seed default stories for first-time / demo experience
-        const demo = [
-          { title: 'User authentication & JWT authorization', points: 5, status: 'done' },
-          { title: 'Interactive Agile Kanban task board', points: 8, status: 'inprogress' },
-          { title: 'Automatic sprint velocity calculation', points: 3, status: 'inprogress' },
-          { title: 'Activity log & real-time event audit', points: 2, status: 'todo' },
-          { title: 'Export / Import sprint data as JSON', points: 3, status: 'todo' },
-          { title: 'PostgreSQL database synchronization', points: 5, status: 'todo' }
-        ];
-        stories = demo.map((d, index) => ({
-          id: index + 1,
-          title: d.title,
-          points: d.points,
-          status: d.status
-        }));
-        nextId = stories.length + 1;
-        addHistoryEvent('Seed', 'Loaded initial sprint template stories');
-      }
+      loadFromLocal();
       renderAll();
       saveData();
     }
-    console.log('🚀 ScrumFlow Pro initialized successfully!');
+    console.log('🚀 ScrumFlow initialized successfully!');
     console.log(`📊 ${stories.length} stories loaded`);
     console.log(`👤 User: ${userData.name}`);
   }

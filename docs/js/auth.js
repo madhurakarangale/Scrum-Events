@@ -25,7 +25,6 @@
   const loginMessage = document.getElementById('loginMessage');
   const registerMessage = document.getElementById('registerMessage');
   const tabBtns = document.querySelectorAll('.tab-btn');
-  const demoLoginBtn = document.getElementById('demoLoginBtn');
   const authStatusDot = document.getElementById('authStatusDot');
   const authStatusText = document.getElementById('authStatusText');
   const changeApiBtn = document.getElementById('changeApiBtn');
@@ -95,28 +94,6 @@
       if (registerMessage) registerMessage.style.display = 'none';
     });
   });
-
-  // ===== DEMO / INSTANT LOGIN =====
-  if (demoLoginBtn) {
-    demoLoginBtn.addEventListener('click', () => {
-      const demoUser = {
-        id: 'demo_' + Date.now(),
-        name: 'Demo Product Owner',
-        email: 'demo@scrumflow.pro',
-        isDemo: true
-      };
-      localStorage.setItem('scrumflow_user', JSON.stringify(demoUser));
-      localStorage.setItem('scrumflow_token', 'demo-local-token-' + Date.now());
-
-      loginMessage.textContent = '🚀 Launching Live Demo...';
-      loginMessage.className = 'auth-message success';
-      loginMessage.style.display = 'block';
-
-      setTimeout(() => {
-        window.location.href = 'pages/dashboard.html';
-      }, 500);
-    });
-  }
 
   // ===== LOCAL STORAGE AUTH HELPER =====
   function getLocalUsers() {
